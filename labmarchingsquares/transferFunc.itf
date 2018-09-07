@@ -1,0 +1,19 @@
+<?xml version="1.0" ?>
+<InviwoWorkspace version="2">
+    <maskMin content="0" />
+    <maskMax content="1" />
+    <Points>
+        <Point>
+            <pos content="0.124" />
+            <rgba x="0" y="0.016662853" z="1" w="1" />
+        </Point>
+        <Point>
+            <pos content="0.69599998" />
+            <rgba x="1" y="0" z="0.033325706" w="1" />
+        </Point>
+        <Point>
+            <pos content="0.35999998" />
+            <rgba x="1" y="1" z="0" w="1" />
+        </Point>
+    </Points>
+</InviwoWorkspace>

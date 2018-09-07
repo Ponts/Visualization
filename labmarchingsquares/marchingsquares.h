@@ -9,7 +9,6 @@
  */
 
 #pragma once
-
 #include <labmarchingsquares/labmarchingsquaresmoduledefine.h>
 #include <inviwo/core/common/inviwo.h>
 #include <inviwo/core/processors/processor.h>
@@ -79,8 +78,7 @@ protected:
     void drawLineSegment(const vec2& v1, const vec2& v2, const vec4& color,
         IndexBufferRAM* indexBuffer, std::vector<BasicMesh::Vertex>& vertices);
 
-	
-	
+	void drawIsoLine(std::shared_ptr<inviwo::BasicMesh>& mesh, const VolumeRAM* vr, std::vector<BasicMesh::Vertex>& vertices, const size3_t& dims, const double xCellSize, const double yCellSize, const double isoValue, vec4 isoColor);
 
 //Ports
 public:

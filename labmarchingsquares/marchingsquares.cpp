@@ -12,6 +12,7 @@
 #include <inviwo/core/datastructures/geometry/basicmesh.h>
 #include <inviwo/core/util/utilities.h>
 
+
 namespace inviwo
 {
 
@@ -72,12 +73,12 @@ MarchingSquares::MarchingSquares()
 
     // The default transfer function has just two blue points
     propIsoTransferFunc.get().clearPoints();
-    propIsoTransferFunc.get().addPoint(vec2(0.0f, 1.0f), vec4(0.0f, 0.0f, 1.0f, 1.0f));
-    propIsoTransferFunc.get().addPoint(vec2(1.0f, 1.0f), vec4(0.0f, 0.0f, 1.0f, 1.0f));
+    //propIsoTransferFunc.get().addPoint(vec2(0.0f, 1.0f), vec4(0.0f, 1.0f, 1.0f, 1.0f));
+	propIsoTransferFunc.get().addPoint(vec2(0.5f, 1.0f), vec4(0.0f, 1.0f, 0.0f, 1.0f));
+    //propIsoTransferFunc.get().addPoint(vec2(1.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f));
     propIsoTransferFunc.setCurrentStateAsDefault();
 
     util::hide(propGridColor, propNumContours, propIsoTransferFunc);
-
     // Show the grid color property only if grid is actually displayed
     propShowGrid.onChange([this]()
     {
@@ -101,13 +102,13 @@ MarchingSquares::MarchingSquares()
         }
         else
         {
-            util::hide(propIsoValue);
-            util::show(propIsoColor, propNumContours);
+            //util::hide(propIsoValue);
+            //util::show(propIsoColor, propNumContours);
             
             // TODO (Bonus): Comment out above if you are using the transfer function
             // and comment in below instead
-            // util::hide(propIsoValue, propIsoColor);
-            // util::show(propNumContours, propIsoTransferFunc);
+            util::hide(propIsoValue, propIsoColor);
+            util::show(propNumContours, propIsoTransferFunc);
         }
     });
 
@@ -168,7 +169,8 @@ void MarchingSquares::process()
     // getInputValue(vrSmoothed, dims, 0, 0);
 
     // Grid
-
+	double xCellSize = dims.x - 1;
+	double yCellSize = dims.y - 1;
     // Properties are accessed with propertyName.get() 
     if (propShowGrid.get())
     {
@@ -184,23 +186,24 @@ void MarchingSquares::process()
         // image range from 0 to 1 for both x and y
         //vec2 v1 = vec2(0.5, 0.5);
         //vec2 v2 = vec2(0.7, 0.7);
-		LogProcessorInfo("GO");
+		
 
         //drawLineSegment(v1, v2, propGridColor.get(), indexBufferGrid, vertices);
-		for (double x = 0.; x <= 1.0; x+=1./dims.x) {
-			for (double y = 0.; y <= 1.0; y+=1./dims.y) {
+		
+		for (double x = 0.; x <= 1.0; x+=1./xCellSize) {
+			for (double y = 0.; y <= 1.0; y+=1./yCellSize) {
 				bool cont = true;
 				if (x == 0. && y < 1.0) {
-					drawLineSegment(vec2(x,y), vec2(x,y+1./dims.y), propGridColor.get(), indexBufferGrid, vertices);
+					drawLineSegment(vec2(x,y), vec2(x,y+1./yCellSize), propGridColor.get(), indexBufferGrid, vertices);
 					cont = false;
 				}
 				if (y == 0. && x < 1.0) {
-					drawLineSegment(vec2(x, y), vec2(x+1./dims.x, y), propGridColor.get(), indexBufferGrid, vertices);
+					drawLineSegment(vec2(x, y), vec2(x+1./xCellSize, y), propGridColor.get(), indexBufferGrid, vertices);
 					cont = false;
 				}
 				if (cont) {
-					vec2 v1 = vec2(x - (1. / dims.x), y);
-					vec2 v2 = vec2(x, y - 1. / dims.y);
+					vec2 v1 = vec2(x - (1. / xCellSize), y);
+					vec2 v2 = vec2(x, y - 1. / yCellSize);
 					vec2 v0 = vec2(x, y);
 					drawLineSegment(v0, v1, propGridColor.get(), indexBufferGrid, vertices);
 					drawLineSegment(v0, v2, propGridColor.get(), indexBufferGrid, vertices);
@@ -213,28 +216,19 @@ void MarchingSquares::process()
 
     if (propMultiple.get() == 0)
     {
-        // TODO: Draw a single isoline at the specified isovalue (propIsoValue) 
-        // and color it with the specified color (propIsoColor)
-		for (int x = 0; x < dims.x-1; x++) {
-			for (int y = 0; y < dims.y-1; y++) {
-				// see which case
-				std::vector <vec2> points();
-				const float valueat00 = getInputValue(vr, dims, x, y);
-				const float valueat10 = getInputValue(vr, dims, x+1, y);
-				const float valueat01 = getInputValue(vr, dims, x, y+1);
-				const float valueat11 = getInputValue(vr, dims, x+1, y+1);
-				if (propIsoValue < valueat00 != propIsoValue < valueat10) {
-					
-				}
-			}
-		}
-
+		drawIsoLine(mesh, vr, vertices, dims, xCellSize, yCellSize, propIsoValue, propIsoColor.get());
 
     }
     else
     {
         // TODO: Draw the given number (propNumContours) of isolines between 
         // the minimum and maximum value
+		double n = propNumContours.get();
+		double stepSize = (maxValue - minValue) / (n + 1);
+		for (double i = 1; i <= n; i++) {
+			double value = minValue + i*stepSize;
+			drawIsoLine(mesh, vr, vertices, dims, xCellSize, yCellSize, value, propIsoTransferFunc.get().sample(i/n));
+		}
         
         // TODO (Bonus): Use the transfer function property to assign a color
         // The transfer function normalizes the input data and sampling colors
@@ -279,6 +273,64 @@ void MarchingSquares::drawLineSegment(const vec2& v1, const vec2& v2, const vec4
     // Add second vertex
     indexBuffer->add(static_cast<std::uint32_t>(vertices.size()));
     vertices.push_back({vec3(v2[0], v2[1], 0), vec3(0, 0, 1), vec3(v2[0], v2[1], 0), color});
+}
+
+void MarchingSquares::drawIsoLine(std::shared_ptr<inviwo::BasicMesh>& mesh, const VolumeRAM* vr, std::vector<BasicMesh::Vertex>& vertices, const size3_t& dims, const double xCellSize, const double yCellSize, const double isoValue, const vec4 isoColor) {
+	auto indexBufferGrid = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::None);
+	// TODO: Draw a single isoline at the specified isovalue (propIsoValue) 
+	// and color it with the specified color (propIsoColor)
+	for (int x = 0; x < dims.x - 1; x++) {
+		for (int y = 0; y < dims.y - 1; y++) {
+			// see which case
+			std::vector <vec2> points;
+			const double valueat00 = getInputValue(vr, dims, x, y);
+			const double valueat10 = getInputValue(vr, dims, x + 1, y);
+			const double valueat01 = getInputValue(vr, dims, x, y + 1);
+			const double valueat11 = getInputValue(vr, dims, x + 1, y + 1);
+			//00 -> 10
+			if (isoValue < valueat00 != isoValue < valueat10) {
+				double xcord = (isoValue - (x + 1)*valueat00 + x*valueat10) / (valueat10 - valueat00);
+				points.push_back(vec2(xcord / xCellSize, double(y) / yCellSize));
+			}
+			if (isoValue < valueat10 != isoValue < valueat11) {
+				double ycord = (isoValue - (y + 1)*valueat10 + y*valueat11) / (valueat11 - valueat10);
+				points.push_back(vec2(double(x + 1) / xCellSize, ycord / yCellSize));
+			}
+			if (isoValue < valueat01 != isoValue < valueat11) {
+				double xcord = (isoValue - (x + 1)*valueat01 + x*valueat11) / (valueat11 - valueat01);
+				points.push_back(vec2(xcord / xCellSize, double(y + 1) / yCellSize));
+			}
+			if (isoValue < valueat00 != isoValue < valueat01) {
+				double ycord = (isoValue - (y + 1)*valueat00 + y*valueat01) / (valueat01 - valueat00);
+				points.push_back(vec2(double(x) / xCellSize, ycord / yCellSize));
+			}
+
+			if (points.size() == 2) {
+				drawLineSegment(points[0], points[1], isoColor, indexBufferGrid, vertices);
+			}
+			else if (points.size() == 4) {
+				//midpoint decider
+				if (propDeciderType.get() == 0) {
+					double mid = (valueat00 + valueat10 + valueat01 + valueat11) / 4;
+					if (isoValue < valueat00 != isoValue < mid) { //00 sign is different from mid sign
+						drawLineSegment(points[0], points[3], isoColor, indexBufferGrid, vertices);
+						drawLineSegment(points[1], points[2], isoColor, indexBufferGrid, vertices);
+					}
+					else {
+						drawLineSegment(points[0], points[1], isoColor, indexBufferGrid, vertices);
+						drawLineSegment(points[2], points[3], isoColor, indexBufferGrid, vertices);
+					}
+				}
+				//asymptotic decider
+				else if (propDeciderType.get() == 1) {
+					// sort by x
+					std::sort(points.begin(), points.end(), [](const vec2& a, const vec2& b) {return a.x < b.x; });
+					drawLineSegment(points[0], points[1], propIsoColor.get(), indexBufferGrid, vertices);
+					drawLineSegment(points[2], points[3], propIsoColor.get(), indexBufferGrid, vertices);
+				}
+			}
+		}
+	}
 }
 
 } // namespace
