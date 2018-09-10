@@ -33,11 +33,14 @@ const ProcessorInfo MarchingSquares::getProcessorInfo() const
 
 
 MarchingSquares::MarchingSquares()
-    :Processor()
-    , inData("volumeIn")
-    , meshOut("meshOut")
-    , propShowGrid("showGrid", "Show Grid")
-    , propDeciderType("deciderType", "Decider Type")
+	:Processor()
+	, inData("volumeIn")
+	, meshOut("meshOut")
+	, propShowGrid("showGrid", "Show Grid")
+	, propDeciderType("deciderType", "Decider Type")
+	, blur("blur", "Use Blur")
+	, filterSize("filterSize", "Size of filter gaussian")
+	, sigma("sigma", "sigma of gaussian filter")
     , propMultiple("multiple", "Iso Levels")
     , propIsoValue("isovalue", "Iso Value")
     , propGridColor("gridColor", "Grid Lines Color", vec4(0.0f, 0.0f, 0.0f, 1.0f),
@@ -54,6 +57,12 @@ MarchingSquares::MarchingSquares()
     addPort(meshOut);
 	
     // Register properties
+	addProperty(blur);
+	addProperty(sigma);
+	sigma.setMinValue(0.01);
+	sigma.setMaxValue(10);
+	addProperty(filterSize);
+	filterSize.setMinValue(0);
     addProperty(propShowGrid);
     addProperty(propGridColor);
 	
@@ -72,7 +81,7 @@ MarchingSquares::MarchingSquares()
     addProperty(propIsoTransferFunc);
 
     // The default transfer function has just two blue points
-    propIsoTransferFunc.get().clearPoints();
+    //propIsoTransferFunc.get().clearPoints();
     //propIsoTransferFunc.get().addPoint(vec2(0.0f, 1.0f), vec4(0.0f, 1.0f, 1.0f, 1.0f));
 	propIsoTransferFunc.get().addPoint(vec2(0.5f, 1.0f), vec4(0.0f, 1.0f, 0.0f, 1.0f));
     //propIsoTransferFunc.get().addPoint(vec2(1.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f));
@@ -91,6 +100,21 @@ MarchingSquares::MarchingSquares()
             util::hide(propGridColor);
         }
     });
+	blur.onChange([this]()
+	{
+		if (blur.get())
+		{
+			util::show(sigma);
+			util::show(filterSize);
+		}
+		else
+		{
+			util::hide(sigma);
+			util::hide(filterSize);
+		}
+	});
+	util::hide(sigma);
+	util::hide(filterSize);
 
     // Show options based on display of one or multiple iso contours
     propMultiple.onChange([this]()
@@ -123,16 +147,7 @@ void MarchingSquares::process()
     // This results in a shared pointer to a volume
     auto vol = inData.getData();
 
-    // Extract the minimum and maximum value from the input data
-    const double minValue = vol->dataMap_.valueRange[0];
-    const double maxValue = vol->dataMap_.valueRange[1];
-
-    // Set the range for the isovalue to that minimum and maximum
-    propIsoValue.setMinValue(minValue);
-    propIsoValue.setMaxValue(maxValue);
-
-    // You can print to the Inviwo console with Log-commands:
-    LogProcessorInfo("This scalar field contains values between " << minValue << " and " << maxValue << ".");
+    
     // You can also inform about errors and warnings:
     // LogProcessorWarn("I am warning about something"); // Will print warning message in yellow
     // LogProcessorError("I am letting you know about an error"); // Will print error message in red
@@ -140,7 +155,7 @@ void MarchingSquares::process()
     // LogProcessor...() for example displays the name of the processor in the workspace while
     // Log...() displays the identifier of the processor (thus with multiple processors of the
     // same kind you would not know which one the information is coming from
-    
+	
     // Retreive data in a form that we can access it
     const VolumeRAM* vr = vol->getRepresentation< VolumeRAM >();
     const size3_t dims = vol->getDimensions();
@@ -155,7 +170,7 @@ void MarchingSquares::process()
     // i is in [0, dims.x-1] and j is in [0, dims.y-1]
 	
     float valueat00 = getInputValue(vr, dims, 0, 0);
-    LogProcessorInfo("Value at (0,0) is: " << valueat00);
+    //LogProcessorInfo("Value at (0,0) is: " << valueat00);
     // You can assume that dims.z = 1 and do not need to consider others cases
 
     // TODO (Bonus) Gaussian filter
@@ -167,10 +182,51 @@ void MarchingSquares::process()
     // vrSmoothed->setFromDouble(vec3(i,j,0), value);
     // getting values works with an editable volume as well
     // getInputValue(vrSmoothed, dims, 0, 0);
-
+	Volume volSmoothed(vol->getDimensions(), vol->getDataFormat());
+	auto vrSmoothed = volSmoothed.getEditableRepresentation<VolumeRAM>();
+	const VolumeRAM* drawData;
+	if (blur) {
+		//x led
+		applyFilter(vr, vrSmoothed, dims);
+		drawData = vrSmoothed;
+	}
+	else {
+		drawData = vr;
+	}
+	LogProcessorInfo("data at 00 " << getInputValue(drawData, dims, 0, 0));
     // Grid
 	double xCellSize = dims.x - 1;
 	double yCellSize = dims.y - 1;
+	// Extract the minimum and maximum value from the input data
+	double minValue;
+	double maxValue;
+	
+	if (blur) {
+		double max(-FLT_MAX), min(FLT_MAX);
+		for (int x = 0; x < dims.x; x++) {
+			for (int y = 0; y < dims.y; y++) {
+				if (max < getInputValue(drawData, dims, x, y))
+					max = getInputValue(drawData, dims, x, y);
+				if (getInputValue(drawData, dims, x, y) < min)
+					min = getInputValue(drawData, dims, x, y);
+			}
+		}
+		minValue = min;
+		maxValue = max;
+	}
+	else {
+		minValue = vol->dataMap_.valueRange[0];
+		maxValue = vol->dataMap_.valueRange[1];
+	}
+	propIsoValue.setMinValue(minValue);
+	propIsoValue.setMaxValue(maxValue);
+	
+	
+    // Set the range for the isovalue to that minimum and maximum
+    
+
+    // You can print to the Inviwo console with Log-commands:
+    LogProcessorInfo("This scalar field contains values between " << minValue << " and " << maxValue << ".");
     // Properties are accessed with propertyName.get() 
     if (propShowGrid.get())
     {
@@ -216,8 +272,7 @@ void MarchingSquares::process()
 
     if (propMultiple.get() == 0)
     {
-		drawIsoLine(mesh, vr, vertices, dims, xCellSize, yCellSize, propIsoValue, propIsoColor.get());
-
+		drawIsoLine(mesh, drawData, vertices, dims, xCellSize, yCellSize, propIsoValue, propIsoColor.get());
     }
     else
     {
@@ -227,7 +282,7 @@ void MarchingSquares::process()
 		double stepSize = (maxValue - minValue) / (n + 1);
 		for (double i = 1; i <= n; i++) {
 			double value = minValue + i*stepSize;
-			drawIsoLine(mesh, vr, vertices, dims, xCellSize, yCellSize, value, propIsoTransferFunc.get().sample(i/n));
+			drawIsoLine(mesh, drawData, vertices, dims, xCellSize, yCellSize, value, propIsoTransferFunc.get().sample(i/n));
 		}
         
         // TODO (Bonus): Use the transfer function property to assign a color
@@ -274,6 +329,63 @@ void MarchingSquares::drawLineSegment(const vec2& v1, const vec2& v2, const vec4
     indexBuffer->add(static_cast<std::uint32_t>(vertices.size()));
     vertices.push_back({vec3(v2[0], v2[1], 0), vec3(0, 0, 1), vec3(v2[0], v2[1], 0), color});
 }
+
+void MarchingSquares::applyFilter(const VolumeRAM* vr, VolumeRAM* vrSmooth, const size3_t dims) {
+	std::vector<float> kernel = gaussianFilter();
+	// x direction first
+	for (int y = 0; y < dims.y; y++) {
+		for (int x = 0; x < dims.x; x++) {
+			float sum = 0;
+			for (int i = 0; i < kernel.size(); i++) {
+				if (x + i - ((kernel.size() - 1) / 2) < 0) {
+					sum += kernel[i] * getInputValue(vr, dims, 0, y);
+				}
+				else if (dims.x-1 < x + i - ((kernel.size() - 1) / 2)) {
+					sum += kernel[i] * getInputValue(vr, dims, dims.x-1, y);
+				}
+				else {
+					sum += kernel[i] * getInputValue(vr, dims, x, y);
+				}
+			}
+			vrSmooth->setFromDouble(vec3(x, y, 0), sum);
+		}
+	}
+	for (int x = 0; x < dims.x; x++) {
+		for (int y = 0; y < dims.y; y++) {
+			float sum = 0;
+			for (int i = 0; i < kernel.size(); i++) {
+				if (y + i - ((kernel.size() - 1) / 2) < 0) {
+					sum += kernel[i] * getInputValue(vrSmooth, dims, x, 0);
+				}
+				else if (dims.y - 1 < y + i - ((kernel.size() - 1) / 2)) {
+					sum += kernel[i] * getInputValue(vrSmooth, dims, x, dims.y-1);
+				}
+				else {
+					sum += kernel[i] * getInputValue(vrSmooth, dims, x, y);
+				}
+			}
+			vrSmooth->setFromDouble(vec3(x, y, 0), sum);
+		}
+	}
+
+}
+
+std::vector<float> MarchingSquares::gaussianFilter() {
+	int length = 1 + filterSize.get() * 2;
+	std::vector <float> kernel(length);
+	float sum = 0.;
+	for (int i = 0; i < kernel.size(); i++) {
+		kernel[i] = exp(-(pow(i - (length - 1)/2,2) / (2*pow(sigma.get(),2))));
+		sum += kernel[i];
+	}
+	for (int i = 0; i < kernel.size(); i++) {
+		kernel[i] = kernel[i] / sum;
+		LogProcessorInfo(kernel[i]);
+	}
+	return kernel;
+}
+
+
 
 void MarchingSquares::drawIsoLine(std::shared_ptr<inviwo::BasicMesh>& mesh, const VolumeRAM* vr, std::vector<BasicMesh::Vertex>& vertices, const size3_t& dims, const double xCellSize, const double yCellSize, const double isoValue, const vec4 isoColor) {
 	auto indexBufferGrid = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::None);

@@ -9,6 +9,7 @@
  */
 
 #pragma once
+#include <math.h>
 #include <labmarchingsquares/labmarchingsquaresmoduledefine.h>
 #include <inviwo/core/common/inviwo.h>
 #include <inviwo/core/processors/processor.h>
@@ -80,6 +81,10 @@ protected:
 
 	void drawIsoLine(std::shared_ptr<inviwo::BasicMesh>& mesh, const VolumeRAM* vr, std::vector<BasicMesh::Vertex>& vertices, const size3_t& dims, const double xCellSize, const double yCellSize, const double isoValue, vec4 isoColor);
 
+	std::vector<float> gaussianFilter();
+
+	void applyFilter(const VolumeRAM*, VolumeRAM*, const size3_t);
+
 //Ports
 public:
     // Input data
@@ -95,6 +100,9 @@ public:
     FloatVec4Property propGridColor;
     TemplateOptionProperty<int> propDeciderType;
     TemplateOptionProperty<int> propMultiple;
+	BoolProperty blur;
+	DoubleProperty sigma;
+	IntProperty filterSize;
     // Properties for choosing a single iso contour by value
     FloatProperty propIsoValue;
     FloatVec4Property propIsoColor;
