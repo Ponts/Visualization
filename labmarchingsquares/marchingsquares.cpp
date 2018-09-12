@@ -60,7 +60,7 @@ MarchingSquares::MarchingSquares()
 	addProperty(blur);
 	addProperty(sigma);
 	sigma.setMinValue(0.01);
-	sigma.setMaxValue(10);
+	sigma.setMaxValue(50);
 	addProperty(filterSize);
 	filterSize.setMinValue(0);
     addProperty(propShowGrid);
@@ -187,7 +187,7 @@ void MarchingSquares::process()
 	const VolumeRAM* drawData;
 	if (blur) {
 		//x led
-		applyFilter(vr, vrSmoothed, dims);
+		applyFilter(vr, vrSmoothed, dims, vol);
 		drawData = vrSmoothed;
 	}
 	else {
@@ -330,8 +330,10 @@ void MarchingSquares::drawLineSegment(const vec2& v1, const vec2& v2, const vec4
     vertices.push_back({vec3(v2[0], v2[1], 0), vec3(0, 0, 1), vec3(v2[0], v2[1], 0), color});
 }
 
-void MarchingSquares::applyFilter(const VolumeRAM* vr, VolumeRAM* vrSmooth, const size3_t dims) {
+void MarchingSquares::applyFilter(const VolumeRAM* vr, VolumeRAM* vrSmooth, const size3_t dims, std::shared_ptr<const Volume> vol) {
 	std::vector<float> kernel = gaussianFilter();
+	Volume volSmoothed(vol->getDimensions(), vol->getDataFormat());
+	auto buffer = volSmoothed.getEditableRepresentation<VolumeRAM>();
 	// x direction first
 	for (int y = 0; y < dims.y; y++) {
 		for (int x = 0; x < dims.x; x++) {
@@ -347,7 +349,7 @@ void MarchingSquares::applyFilter(const VolumeRAM* vr, VolumeRAM* vrSmooth, cons
 					sum += kernel[i] * getInputValue(vr, dims, x, y);
 				}
 			}
-			vrSmooth->setFromDouble(vec3(x, y, 0), sum);
+			buffer->setFromDouble(vec3(x, y, 0), sum);
 		}
 	}
 	for (int x = 0; x < dims.x; x++) {
@@ -355,13 +357,13 @@ void MarchingSquares::applyFilter(const VolumeRAM* vr, VolumeRAM* vrSmooth, cons
 			float sum = 0;
 			for (int i = 0; i < kernel.size(); i++) {
 				if (y + i - ((kernel.size() - 1) / 2) < 0) {
-					sum += kernel[i] * getInputValue(vrSmooth, dims, x, 0);
+					sum += kernel[i] * getInputValue(buffer, dims, x, 0);
 				}
 				else if (dims.y - 1 < y + i - ((kernel.size() - 1) / 2)) {
-					sum += kernel[i] * getInputValue(vrSmooth, dims, x, dims.y-1);
+					sum += kernel[i] * getInputValue(buffer, dims, x, dims.y-1);
 				}
 				else {
-					sum += kernel[i] * getInputValue(vrSmooth, dims, x, y);
+					sum += kernel[i] * getInputValue(buffer, dims, x, y);
 				}
 			}
 			vrSmooth->setFromDouble(vec3(x, y, 0), sum);

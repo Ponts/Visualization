@@ -83,7 +83,7 @@ protected:
 
 	std::vector<float> gaussianFilter();
 
-	void applyFilter(const VolumeRAM*, VolumeRAM*, const size3_t);
+	void applyFilter(const VolumeRAM*, VolumeRAM*, const size3_t, std::shared_ptr<const Volume>);
 
 //Ports
 public:
