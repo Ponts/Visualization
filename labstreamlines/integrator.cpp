@@ -83,5 +83,37 @@ vec2 Integrator::RK4(const VolumeRAM* vr, size3_t dims, const vec2& position, co
 	return next;
 }
 
+double Integrator::vecLength(const vec2 & in) {
+	return sqrt(in.x*in.x + in.y*in.y);
+}
+
+void Integrator::normalize(vec2 & in) {
+	double length = sqrt(in.x*in.x + in.y*in.y);
+	if (length < 0.001)
+		return;
+	in.x = in.x / length;
+	in.y = in.y / length;
+}
+
+vec2 Integrator::RK4(const VolumeRAM* vr, size3_t dims, const vec2& position, const double stepSize, const struct options & opt)
+{
+	vec2 next;
+	vec2 v1 = sampleFromField(vr, dims, position);
+	if (opt.normalize)
+		normalize(v1);
+	vec2 v2 = sampleFromField(vr, dims, vec2(position.x + 0.5 * stepSize * v1.x, position.y + 0.5 * stepSize * v1.y));
+	if (opt.normalize)
+		normalize(v2);
+	vec2 v3 = sampleFromField(vr, dims, vec2(position.x + 0.5 * stepSize * v2.x, position.y + 0.5 * stepSize * v2.y));
+	if (opt.normalize)
+		normalize(v3);
+	vec2 v4 = sampleFromField(vr, dims, vec2(position.x + stepSize * v3.x, position.y + stepSize * v3.y));
+	if (opt.normalize)
+		normalize(v4);
+	for (int i = 0; i < 2; i++)
+		next[i] = position[i] + opt.reverse * stepSize*((v1[i] / 6.) + (v2[i] / 3.) + (v3[i] / 3.) + (v4[i] / 6.));
+	return next;
+}
+
 } // namespace
 

@@ -66,6 +66,7 @@ protected:
     /// Our main computation function
     virtual void process() override;
     void eventMoveStart(Event* event);
+	
 
 // Ports
 public:
@@ -84,6 +85,8 @@ public:
 
 	IntProperty rkNIntegration;
 	FloatProperty rkStepSize;
+
+
 
     // TODO: Declare additional properties
     // IntProperty properyName;
