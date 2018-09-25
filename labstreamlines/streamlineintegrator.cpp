@@ -43,6 +43,9 @@ StreamlineIntegrator::StreamlineIntegrator()
 	, lowVel("lowvel", "Low velocity to stop", 0.0001, 0, 10)
 	, showPoints("showpoints", "Show Points", false)
 	, nLines("nLines", "Number of lines", 10, 0, 1000)
+	, chooseSeeding("HowSeed", "Seeding mode")
+	, howUniformX("uniformx", "nr of seeds x", 5, 0, 33)
+	, howUniformY("uniformy", "nr of seeds y", 5, 0, 33)
     // TODO: Initialize additional properties
     // propertyName("propertyIdentifier", "Display Name of the Propery",
     // default value (optional), minimum value (optional), maximum value (optional), increment
@@ -56,9 +59,21 @@ StreamlineIntegrator::StreamlineIntegrator()
     // Register Properties
     propSeedMode.addOption("one", "Single Start Point", 0);
     propSeedMode.addOption("multiple", "Multiple Seeds", 1);
+
+	chooseSeeding.addOption("random", "Random seeding", 0);
+	chooseSeeding.addOption("uniform", "Uniform seeding", 1);
+	chooseSeeding.addOption("magnitude", "Match magnitude", 2);
+	
+	addProperty(chooseSeeding);
+	addProperty(nLines);
+	addProperty(howUniformX);
+	addProperty(howUniformY);
+
     addProperty(propSeedMode);
     addProperty(propStartPoint);
     addProperty(mouseMoveStart);
+
+	
 
 	addProperty(rkStepSize);
 	addProperty(rkNIntegration);
@@ -72,21 +87,40 @@ StreamlineIntegrator::StreamlineIntegrator()
 	addProperty(stopAtLowVel);
 	addProperty(lowVel);
 	addProperty(showPoints);
-	addProperty(nLines);
+	
 
     // TODO: Register additional properties
     // addProperty(propertyName);
-	util::hide(arcLength);
+	//util::hide(arcLength);
 	util::hide(lowVel);
 	util::hide(nLines);
+	util::hide(howUniformX);
+	util::hide(howUniformY);
+	util::hide(chooseSeeding);
     // You can hide and show properties for a single seed and hide properties for multiple seeds (TODO)
+	chooseSeeding.onChange([this]() {
+		if (chooseSeeding.get() == 0 || chooseSeeding.get() == 2){
+			util::hide(howUniformX);
+			util::hide(howUniformY);
+
+			util::show(nLines);
+		}
+		else if (chooseSeeding.get() == 1) {
+			util::show(howUniformX);
+			util::show(howUniformY);
+
+			util::hide(nLines);
+		}
+	});
     propSeedMode.onChange([this]() {
         if (propSeedMode.get() == 0) {
             util::show(propStartPoint, mouseMoveStart);
 			util::hide(nLines);
+			util::hide(chooseSeeding);
         } else {
             util::hide(propStartPoint, mouseMoveStart);
 			util::show(nLines);
+			util::show(chooseSeeding);
         }
     });
 	stopArcLength.onChange([this]() {
@@ -151,22 +185,74 @@ void StreamlineIntegrator::process() {
 	else {
 		// TODO: Seed multiple stream lines either randomly or using a uniform grid
 		// (TODO: Bonus, sample randomly according to magnitude of the vector field)
-
-		for (int i = 0; i < nLines.get(); i++) {
-			double startX =fRand(0, dims.x - 1);
-			double startY = fRand(0, dims.y - 1);
-			auto indexBufferPoints = mesh->addIndexBuffer(DrawType::Points, ConnectivityType::None);
-			auto indexBufferLines = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
-			vec2 start = vec2(startX, startY);
-			streamLine(vr, indexBufferPoints, indexBufferLines, start, vertices, opts);
+		// Random 
+		if (chooseSeeding.get() == 0) {
+			for (int i = 0; i < nLines.get(); i++) {
+				double startX = fRand(0, dims.x - 1);
+				double startY = fRand(0, dims.y - 1);
+				auto indexBufferPoints = mesh->addIndexBuffer(DrawType::Points, ConnectivityType::None);
+				auto indexBufferLines = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+				vec2 start = vec2(startX, startY);
+				streamLine(vr, indexBufferPoints, indexBufferLines, start, vertices, opts);
+			}
 		}
-		
-		
-
+		// uniform
+		else if (chooseSeeding.get() == 1) {
+			double xCellSize = double(dims.x - 1) / double(howUniformX.get());
+			double yCellSize = double(dims.y - 1) / double(howUniformY.get());
+			for (int x = 0; x <= howUniformX.get(); x++) {
+				for (int y = 0; y <= howUniformY.get(); y++) {
+					vec2 start = vec2(xCellSize*x, yCellSize*y);
+					auto indexBufferPoints = mesh->addIndexBuffer(DrawType::Points, ConnectivityType::None);
+					auto indexBufferLines = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+					streamLine(vr, indexBufferPoints, indexBufferLines, start, vertices, opts);
+				}
+			}
+		}
+		else if (chooseSeeding.get() == 2) {
+			std::vector<double> pdf;
+			double xCellSize = double(dims.x - 1) / double(dims.x - 1);
+			double yCellSize = double(dims.y - 1) / double(dims.y - 1);
+			double sum = 0.;
+			for (int y = 0; y < dims.y; y++) {
+				for (int x = 0; x < dims.x; x++) {
+					vec2 pos = Integrator::sampleFromField(vr,dims,vec2(x*xCellSize, y*yCellSize));
+					double mag = exp(Integrator::vecLength(pos));
+					sum += mag;
+					pdf.push_back(mag);
+				}
+			}
+			for (int i = 0; i < nLines.get(); i++) {
+				vec2 start = sampleFromDist(pdf, sum, xCellSize, yCellSize);
+				auto indexBufferPoints = mesh->addIndexBuffer(DrawType::Points, ConnectivityType::None);
+				auto indexBufferLines = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+				streamLine(vr, indexBufferPoints, indexBufferLines, start, vertices, opts);
+			}
+			double max = *std::max_element(std::begin(pdf), std::end(pdf));
+			double mean = sum / pdf.size();
+		}
     }
-
-    mesh->addVertices(vertices);
+	mesh->addVertices(vertices);
     outMesh.setData(mesh);
+}
+
+vec2 StreamlineIntegrator::sampleFromDist(const std::vector<double> & pdf, const double sum, const double xCellSize, const double yCellSize) {
+	double limit = fRand(0, sum);
+	double cumSum = 0.;
+	for (int i = 0; i < pdf.size(); i++) {
+		cumSum += pdf[i];
+		if (limit <= cumSum) {
+			double y = (i / dims.x)*yCellSize + fRand(-yCellSize*0.5, yCellSize*0.5);
+			double x = (i- (i / dims.x)*dims.x)*xCellSize + fRand(-xCellSize*0.5, xCellSize*0.5);
+			y = clip(y, 0, dims.y - 1);
+			x = clip(x, 0, dims.x - 1);
+			return vec2(x, y);
+		}
+	}
+}
+
+double StreamlineIntegrator::clip(double n, double lower, double upper) {
+	return std::max(lower, std::min(n, upper));
 }
 
 double StreamlineIntegrator::fRand(double fMin, double fMax)

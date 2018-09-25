@@ -24,6 +24,8 @@
 #include <inviwo/core/datastructures/geometry/basicmesh.h>
 #include <inviwo/core/datastructures/volume/volumeram.h>
 #include <cstdlib>
+#include <algorithm>
+
 
 namespace inviwo {
 
@@ -75,6 +77,8 @@ protected:
     void eventMoveStart(Event* event);
 	void streamLine(const VolumeRAM* vr, IndexBufferRAM* bufferPoints, IndexBufferRAM* bufferLines, const vec2 startPoint, std::vector<BasicMesh::Vertex>& vertices, const Integrator::options& opts);
 	double fRand(double fMin, double fMax);
+	vec2 sampleFromDist(const std::vector<double> & pdf, const double sum, const double xCellSize, const double yCellSize);
+	double clip(double n, double lower, double upper);
     // (TODO: You could define some helper functions here,
     // e.g. a function creating a single streamline from one seed point)
 
@@ -104,6 +108,9 @@ public:
 	FloatProperty lowVel;
 	BoolProperty showPoints;
 	IntProperty nLines;
+	TemplateOptionProperty<int> chooseSeeding;
+	IntProperty howUniformX;
+	IntProperty howUniformY;
     // TODO: Declare additional properties
     // Some types that you might need are given below
     // IntProperty properyName;
