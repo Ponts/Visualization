@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <limits>
 #include <lablic/lablicmoduledefine.h>
 #include <inviwo/core/common/inviwo.h>
 #include <inviwo/core/processors/processor.h>
@@ -18,6 +19,7 @@
 #include <inviwo/core/datastructures/image/imageram.h>
 #include <inviwo/core/properties/boolproperty.h>
 #include <inviwo/core/properties/ordinalproperty.h>
+
 
 
 namespace inviwo {
@@ -59,9 +61,11 @@ protected:
     virtual void process() override;
 	std::vector<double> kernel();
 	int applyKernel(const vec2& pos, const Volume* vr, const ImageRAM* tr);
+	void fastKernel(const vec2& pos, const Volume* vr, const ImageRAM* tr, std::vector<std::vector<int>>& visited, LayerRAM* lr);
 	vec2 fieldToTexture(const vec2& pos);
 	vec2 textureToField(const vec2& pos);
 	double clip(double n, double lower, double upper);
+	void enhance(LayerRAM* lr);
 
     // (TODO: Helper functions can be defined here and then implemented in the .cpp)
     // e.g. something like a function for standardLIC, fastLIC, autoContrast, ...
@@ -84,12 +88,25 @@ public:
 // IntProperty prop1;
 // BoolProperty prop2;
 	IntProperty kernelLength;
-	
+	BoolProperty improveContrast;
+	BoolProperty fastLic;
+	BoolProperty debug;
 
 // Attributes
 private:
     size3_t vectorFieldDims_;
     size2_t texDims_;
+	double fieldToTexXrat;
+	double fieldToTexYrat;
+
+	double texToFieldXrat;
+	double texToFieldYrat;
+
+	double stepSize;
+
+	
+
+
 };
 
 }  // namespace inviwo

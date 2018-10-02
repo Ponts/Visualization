@@ -56,6 +56,10 @@ public:
 public:
     IntVec2Property texSize_;
 
+	BoolProperty spotNoise;
+
+	IntProperty seed;
+
 // TODO: Declare additional properties
 // IntProperty properyName;
 // TemplateOptionProperty<int> propertyName2;

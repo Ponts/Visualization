@@ -32,6 +32,9 @@ LICProcessor::LICProcessor()
 	, noiseTexIn_("noiseTexIn")
 	, licOut_("licOut")
 	, kernelLength("klength", "Length of kernel", 0, 0, 10)
+	, improveContrast("icontr", "Improve Contrast", false)
+	, fastLic("fast", "Fast LIC", true)
+	, debug("go", "go", false)
 
 // TODO: Register additional properties
 
@@ -45,6 +48,9 @@ LICProcessor::LICProcessor()
 
     // TODO: Register additional properties
 	addProperty(kernelLength);
+	addProperty(improveContrast);
+	addProperty(fastLic);
+	addProperty(debug);
 
 }
 
@@ -57,6 +63,10 @@ void LICProcessor::process() {
     if (!noiseTexIn_.hasData()) {
         return;
     }
+
+	if (!debug) {
+		return;
+	}
 
     auto vol = volumeIn_.getData();
     vectorFieldDims_ = vol->getDimensions();
@@ -72,18 +82,40 @@ void LICProcessor::process() {
     auto outImage = tex->clone();
     auto outLayer = outImage->getColorLayer();
     auto lr = outLayer->getEditableRepresentation<LayerRAM>();
+	fieldToTexXrat = (double)(vectorFieldDims_.x - 1) / (double)(texDims_.x - 1);
+	fieldToTexYrat = (double)(vectorFieldDims_.y - 1) / (double)(texDims_.y - 1);
+
+	texToFieldXrat = (double)(texDims_.x - 1) / (double)(vectorFieldDims_.x - 1);
+	texToFieldYrat = (double)(texDims_.y - 1) / (double)(vectorFieldDims_.y - 1);
+
+	stepSize = sqrt(pow(fieldToTexXrat, 2) + pow(fieldToTexYrat,2)) ;
 
     // To access the image at a floating point position, you can call
     //      Interpolator::sampleFromGrayscaleImage(tr, somePos)
 
     // TODO: Implement LIC and FastLIC
-	//std::vector<std::vector<int>> visited(texDims_.x, std::vector<int>(texDims_.y, 0));
-	for (auto j = 0; j < texDims_.y-1; j++) {
-		for (auto i = 0; i < texDims_.x-1; i++) {
-			int val = applyKernel(vec2(i, j), vol.get(), tr);
-			lr->setFromDVec4(size2_t(i, j), dvec4(val, val, val, 255));
+	int entered = 0;
+	if (fastLic) {
+		std::vector<std::vector<int>> visited(texDims_.x, std::vector<int>(texDims_.y, 0));
+		for (auto j = 0; j < texDims_.y; j++) {
+			for (auto i = 0; i < texDims_.x; i++) {
+				if (visited[i][j] == 0) {
+					fastKernel(vec2(i, j), vol.get(), tr, visited, lr);
+					entered++;
+				}
+			}
 		}
 	}
+	else {
+		for (auto j = 0; j < texDims_.y; j++) {
+			for (auto i = 0; i < texDims_.x; i++) {
+				int val = applyKernel(vec2(i, j), vol.get(), tr);
+				lr->setFromDVec4(size2_t(i, j), dvec4(val, val, val, 255));
+			}
+		}
+	}
+	LogProcessorInfo(entered);
+	
 
 
     // This code instead sets all pixels to the same gray value
@@ -97,8 +129,39 @@ void LICProcessor::process() {
         }
     }
 	*/
+	if (improveContrast)
+		enhance(lr);
 
     licOut_.setData(outImage);
+}
+
+void LICProcessor::enhance(LayerRAM* lr) {
+	double mu = 0.;
+	double P = 0.;
+	double n = 0.;
+	for (auto j = 0; j < texDims_.y; j++) {
+		for (auto i = 0; i < texDims_.x; i++) {
+			double p = lr->getAsDouble(size2_t(i, j));
+			if (p > 0.001) {
+				mu += p;
+				n+=1.;
+				P += pow(p, 2);
+			}
+		}
+	}
+	mu /= n;
+	double sigma = sqrt((P - n*pow(mu, 2)) / (n - 1));
+	double desMean = 255 * 0.5;
+	double desVar = 255 * 0.1;
+	double f = desMean / mu;
+	for (auto j = 0; j < texDims_.y; j++) {
+		for (auto i = 0; i < texDims_.x; i++) {
+			double p = lr->getAsDouble(size2_t(i, j));
+			double pi = desMean + (f*(p - mu));
+			lr->setFromDVec4(size2_t(i, j), dvec4(pi, pi, pi, 255));
+		}
+	}
+	return;
 }
 
 std::vector<double> LICProcessor::kernel() {
@@ -108,12 +171,12 @@ std::vector<double> LICProcessor::kernel() {
 
 int LICProcessor::applyKernel(const vec2& pos, const Volume* vr, const ImageRAM* tr) {
 	//go kernel length forward and backward
-	double sum = Interpolator::sampleFromGrayscaleImage(tr, pos);
+	double sum = tr->readPixel(size2_t(pos[0], pos[1]), LayerType::Color)[0];
 	vec2 newPos = textureToField(pos);
 	vec2 dir;
 	int div = 1;
 	for (int i = 0; i < kernelLength.get(); i++) {
-		dir = Integrator::RK4(vr, newPos, 1., 1.);
+		dir = Integrator::RK4(vr, newPos, stepSize, 1.);
 		if (!(Integrator::vecLength(dir) < 0.001)) {
 			div += 1;
 			newPos += dir;
@@ -125,7 +188,7 @@ int LICProcessor::applyKernel(const vec2& pos, const Volume* vr, const ImageRAM*
 	}
 	newPos = textureToField(pos);
 	for (int i = 0; i < kernelLength.get(); i++) {
-		dir = Integrator::RK4(vr, newPos, 1., -1.);
+		dir = Integrator::RK4(vr, newPos, stepSize, -1.);
 		if (!(Integrator::vecLength(dir) < 0.001)) {
 			div += 1;
 			newPos += dir;
@@ -138,21 +201,99 @@ int LICProcessor::applyKernel(const vec2& pos, const Volume* vr, const ImageRAM*
 	return (int)(sum / div);
 }
 
+void LICProcessor::fastKernel(const vec2& pos, const Volume* vr, const ImageRAM* tr, std::vector<std::vector<int>>& visited, LayerRAM* lr) {
+	double sum = tr->readPixel(size2_t(pos[0], pos[1]), LayerType::Color)[0];
+	std::queue<vec2> forward;
+	std::queue<vec2> backward;
+	std::vector<double> values(kernelLength*2+1,0);
+	int div = 1;
+	vec2 newPos = textureToField(pos), forwardPos, backPos, dir;
+	values[kernelLength] = sum;
+	//forward
+	for (int i = 0; i < kernelLength.get(); i++) {
+		dir = Integrator::RK4(vr, newPos, stepSize, 1.);
+		if (!(Integrator::vecLength(dir) < 0.001)) {
+			div += 1;
+			newPos += dir;
+			forward.push(newPos);
+			vec2 texPos = fieldToTexture(newPos);
+			double value = Interpolator::sampleFromGrayscaleImage(tr, texPos);
+			values[kernelLength + i + 1] = value;
+			sum += value;
+		}
+		else 
+			break;
+	}
+	newPos = textureToField(pos);
+	for (int i = 0; i < kernelLength.get(); i++) {
+		dir = Integrator::RK4(vr, newPos, stepSize, -1.);
+		if (!(Integrator::vecLength(dir) < 0.001)) {
+			div += 1;
+			newPos += dir;
+			backward.push(newPos);
+			vec2 texPos = fieldToTexture(newPos);
+			double value = Interpolator::sampleFromGrayscaleImage(tr, texPos);
+			values[kernelLength - i - 1] = value;
+			sum += value;
+		}
+		else
+			break;
+	}
+	double startSum = sum;
+	double startDiv = div;
+	std::vector<double> startValues = values;
+	std::queue<double> forwardValues;
+	for (const auto& e : values) forwardValues.push(e);
+	visited[pos.x][pos.y] = 1; //visited
+	double color = sum / (double)div;
+	lr->setFromDVec4(size2_t(pos.x, pos.y), vec4(color, color, color, 255));
+	if (forward.size() != 0) {
+		dir = Integrator::RK4(vr, forward.back(), stepSize, 1.);
+		while (!(Integrator::vecLength(dir) < 0.001) ) {
+			vec2 colorPos = fieldToTexture(forward.front());
+			if (visited[(int)colorPos.x][(int)colorPos.y] == 1) break;
+			newPos = forward.back() + dir;
+			forward.push(newPos);
+			double value = Interpolator::sampleFromGrayscaleImage(tr, fieldToTexture(newPos));
+			sum += value;
+			sum -= forwardValues.front();
+			forwardValues.pop();
+			forwardValues.push(value);
+			div = std::min(div + 1, kernelLength * 2 + 1);
+			double color = sum / (double)div;
+			lr->setFromDVec4(size2_t((int)colorPos.x, (int)colorPos.y), vec4(color, color, color, 255));
+			visited[(int)colorPos.x][(int)colorPos.y] = 1;
+			forward.pop();
+			dir = Integrator::RK4(vr, forward.back(), stepSize, 1.);
+		}
+		//middle of kernel hit visited or edge
+		for (const auto& e = forward.front(); !forward.empty(); forward.pop()) {
+			vec2 imagePos = fieldToTexture(e);
+			if (visited[(int)imagePos.x][(int)imagePos.y] == 1) break;
+			double color = sum / (double)div;
+			lr->setFromDVec4(size2_t((int)imagePos.x, (int)imagePos.y), vec4(color, color, color, 255));
+			visited[(int)imagePos.x][(int)imagePos.y] = 1;
+			sum -= forwardValues.front();
+			forwardValues.pop();
+			div -= 1;
+		}
+	}
+
+	
+
+}
+
 vec2 LICProcessor::fieldToTexture(const vec2& pos) {
-	double xRatio = (double)vectorFieldDims_.x / (double)texDims_.x;
-	double yRatio = (double)vectorFieldDims_.y / (double)texDims_.y;
-	return vec2((int)clip(pos.x / xRatio,0,texDims_.x-2), (int)clip(pos.y / yRatio,0,texDims_.y-2));
+	return vec2(clip(pos.x / fieldToTexXrat,0,texDims_.x-1), clip(pos.y / fieldToTexYrat,0,texDims_.y-1));
 }
 
 vec2 LICProcessor::textureToField(const vec2& pos) {
-	double xRatio = (double)texDims_.x / (double)vectorFieldDims_.x;
-	double yRatio = (double)texDims_.y / (double)vectorFieldDims_.y;
-	return vec2(pos.x / xRatio, pos.y / yRatio);
+	return vec2(clip(pos.x / texToFieldXrat,0, vectorFieldDims_.x-1), clip(pos.y / texToFieldYrat,0, vectorFieldDims_.y-1));
 }
 
 double LICProcessor::clip(double n, double lower, double upper) {
-	return std::max(lower, std::min(n, upper));
+	return std::max(lower, std::min(n, upper - 0.01));
 }
 
-
+//std::numeric_limits<double>::min()
 }  // namespace inviwo

@@ -12,6 +12,7 @@
 #include <inviwo/core/common/inviwo.h>
 #include <inviwo/core/datastructures/geometry/basicmesh.h>
 #include <inviwo/core/datastructures/volume/volumeram.h>
+#include <inviwo/core/datastructures/image/imageram.h>
 #include <lablic/lablicmoduledefine.h>
 
 namespace inviwo
