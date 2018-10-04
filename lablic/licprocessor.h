@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <ctime>
 #include <limits>
 #include <lablic/lablicmoduledefine.h>
 #include <inviwo/core/common/inviwo.h>
@@ -66,6 +67,8 @@ protected:
 	vec2 textureToField(const vec2& pos);
 	double clip(double n, double lower, double upper);
 	void enhance(LayerRAM* lr);
+	void colorise(LayerRAM* lr, const Volume* vr);
+	vec4 getColor(const double mag);
 
     // (TODO: Helper functions can be defined here and then implemented in the .cpp)
     // e.g. something like a function for standardLIC, fastLIC, autoContrast, ...
@@ -91,6 +94,7 @@ public:
 	BoolProperty improveContrast;
 	BoolProperty fastLic;
 	BoolProperty debug;
+	BoolProperty colorIt;
 
 // Attributes
 private:
