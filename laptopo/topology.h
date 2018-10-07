@@ -8,6 +8,7 @@
 
 #pragma once
 
+
 #include <inviwo/core/common/inviwo.h>
 #include <inviwo/core/ports/meshport.h>
 #include <inviwo/core/ports/volumeport.h>
@@ -15,7 +16,8 @@
 #include <inviwo/core/properties/eventproperty.h>
 #include <inviwo/core/properties/ordinalproperty.h>
 #include <labtopo/labtopomoduledefine.h>
-#include <labtopo/utils/gradients.h>
+
+
 
 namespace inviwo
 {
@@ -73,7 +75,7 @@ public:
 	bool changeOfSignTest(const Volume* vr, const double x, const double y, const double stepsize);
 	bool findCriticalPoint(const Volume* vr, const double x, double y, const double stepsize, std::vector<vec2>& ret);
 	void addVertice(const vec2 pos, std::vector<BasicMesh::Vertex>& vertices, const Topology::TypeCP& type);
-	Topology::TypeCP identify(const util::EigenResult& eigenRes);
+	Topology::TypeCP identify(const mat2& jacobian);
     // Ports
   public:
     // Input data

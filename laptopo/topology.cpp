@@ -11,6 +11,8 @@
 #include <labtopo/integrator.h>
 #include <labtopo/interpolator.h>
 #include <labtopo/topology.h>
+#include <labtopo/utils/gradients.h>
+
 
 
 namespace inviwo
@@ -96,10 +98,9 @@ void Topology::process()
 		}
 	}
 	for (int i = 0; i < critPoints.size(); ++i) {
-		//mat2 jacobian = Interpolator::sampleJacobian(vol.get(), critPoints[i]);
-		//auto eigenRes = util::eigenAnalysis(jacobian);
-		//types.push_back(identify(eigenRes));
-		addVertice(critPoints[i], vertices, TypeCP::AttractingFocus);
+		mat2 jacobian = Interpolator::sampleJacobian(vol.get(), critPoints[i]);
+		types.push_back(identify(jacobian));
+		addVertice(critPoints[i], vertices, types[i]);
 		indexBufferPoints->add(static_cast<std::uint32_t>(vertices.size() - 1));
 	}
 	LogProcessorInfo(critPoints.size());
@@ -151,11 +152,14 @@ void Topology::addVertice(const vec2 pos, std::vector<BasicMesh::Vertex>& vertic
 	// check what type the vertice is
 
 	vertices.push_back({ vec3(pos.x / (dims[0] - 1), pos.y / (dims[1] - 1), 0),
-		vec3(0), vec3(0), ColorsCP[0] });
+		vec3(0), vec3(0), ColorsCP[static_cast<int>(type)] });
 
 }
 
-Topology::TypeCP Topology::identify(const util::EigenResult& eigenRes) {
+Topology::TypeCP Topology::identify(const mat2& jacobian) {
+	auto eigenRes = util::eigenAnalysis(jacobian);
+	if (abs(eigenRes.eigenvaluesRe[0]) < 0.01 && abs(eigenRes.eigenvaluesRe[1]) < 0.01)
+		return TypeCP::Center;
 	if (eigenRes.eigenvaluesRe[0] > 0 && eigenRes.eigenvaluesRe[1] > 0) {
 		if (eigenRes.eigenvaluesIm[0] == 0)
 			return TypeCP::RepellingNode;
@@ -166,9 +170,8 @@ Topology::TypeCP Topology::identify(const util::EigenResult& eigenRes) {
 			return TypeCP::AttractingNode;
 		return TypeCP::AttractingFocus;
 	}
-	if (eigenRes.eigenvaluesRe[0] == 0 && eigenRes.eigenvaluesRe[1] == 0) 
-		return TypeCP::Center;
 	return TypeCP::Saddle;
 }
+
 
 }// namespace
