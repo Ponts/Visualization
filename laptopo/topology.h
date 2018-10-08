@@ -51,11 +51,12 @@ public:
         RepellingNode = 2,
         AttractingFocus = 3,
         RepellingFocus = 4,
-        Center = 5
+        Center = 5,
+		Line = 6
     };
 
     // Colors according to the TypeCP enum.
-    static const vec4 ColorsCP[6];
+    static const vec4 ColorsCP[7];
 
     // Construction / Deconstruction
   public:
@@ -76,7 +77,9 @@ public:
 	bool findCriticalPoint(const Volume* vr, const double x, double y, const double stepsize, std::vector<vec2>& ret);
 	void addVertice(const vec2 pos, std::vector<BasicMesh::Vertex>& vertices, const Topology::TypeCP& type);
 	Topology::TypeCP identify(const mat2& jacobian);
-    // Ports
+	void computeSeparatrices(const vec2& pos, const mat2& jacobian, const Volume* vr, std::shared_ptr<BasicMesh> mesh, std::vector<BasicMesh::Vertex>& vertices);
+	void integrateSeparatrice(const Volume* vr, IndexBufferRAM* buffer, std::vector<BasicMesh::Vertex>& vertices, const vec2& pos, const int dir);
+	// Ports
   public:
     // Input data
     VolumeInport inData;

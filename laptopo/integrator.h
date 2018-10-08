@@ -28,7 +28,8 @@ public:
 
 // Methods
 public:
-
+	static vec2 RK4(const Volume* vr, const vec2& position, const double stepSize, const int dir);
+	static double vecLength(const vec2 & in);
     // TODO: Build on the last assignment by either copying the integrator code
     // here and in the respective .cpp or include the header from that
     // assignment with #include <lablic/integrator.h> in the files

@@ -13,19 +13,39 @@
 #include <labtopo/topology.h>
 #include <labtopo/utils/gradients.h>
 
+/*
+a) 
+x = -y - 3
+y = x - 5
 
+b)
+x = -x - 2
+y = y - 7
+
+c)
+x = (-y - 3)*(-x - 2)
+y = (x - 5)*( y - 7)
+
+d)
+Partial derivatives
+x = -sin(x)
+y = cos(y)
+
+*/
 
 namespace inviwo
 {
 
-const vec4 Topology::ColorsCP[6] =
+const vec4 Topology::ColorsCP[7] =
     {
         vec4(1, 1, 0, 1),  // Saddle
         vec4(0, 0, 1, 1),  // AttractingNode
         vec4(1, 0, 0, 1),  // RepellingNode
         vec4(0.5, 0, 1, 1),// AttractingFocus
         vec4(1, 0.5, 0, 1),// RepellingFocus
-        vec4(0, 1, 0, 1)   // Center
+        vec4(0, 1, 0, 1),   // Center
+		vec4(1,1,1,1)		// Line
+
 };
 
 // The Class Identifier has to be globally unique. Use a reverse DNS naming scheme
@@ -78,7 +98,7 @@ void Topology::process()
     std::vector<BasicMesh::Vertex> vertices;
     // Either add all line segments to this index buffer (one large buffer),
     // or use several index buffers with connectivity type adjacency.
-    auto indexBufferSeparatrices = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::None);
+    
     auto indexBufferPoints = mesh->addIndexBuffer(DrawType::Points, ConnectivityType::None);
 
     // TODO: Compute the topological skeleton of the input vector field.
@@ -102,6 +122,11 @@ void Topology::process()
 		types.push_back(identify(jacobian));
 		addVertice(critPoints[i], vertices, types[i]);
 		indexBufferPoints->add(static_cast<std::uint32_t>(vertices.size() - 1));
+		if (types[i] == TypeCP::Saddle) {
+			
+			computeSeparatrices(critPoints[i], jacobian, vol.get(), mesh, vertices);
+		}
+		
 	}
 	LogProcessorInfo(critPoints.size());
     mesh->addVertices(vertices);
@@ -150,10 +175,8 @@ bool Topology::changeOfSignTest(const Volume* vr, const double x, const double y
 
 void Topology::addVertice(const vec2 pos, std::vector<BasicMesh::Vertex>& vertices, const Topology::TypeCP& type) {
 	// check what type the vertice is
-
 	vertices.push_back({ vec3(pos.x / (dims[0] - 1), pos.y / (dims[1] - 1), 0),
 		vec3(0), vec3(0), ColorsCP[static_cast<int>(type)] });
-
 }
 
 Topology::TypeCP Topology::identify(const mat2& jacobian) {
@@ -171,6 +194,48 @@ Topology::TypeCP Topology::identify(const mat2& jacobian) {
 		return TypeCP::AttractingFocus;
 	}
 	return TypeCP::Saddle;
+}
+
+void Topology::computeSeparatrices(const vec2& pos, const mat2& jacobian, const Volume* vr, std::shared_ptr<BasicMesh> mesh, std::vector<BasicMesh::Vertex>& vertices) {
+	auto e = util::eigenAnalysis(jacobian);
+	vec2 startPos;
+	for (auto v = 0; v < 2; ++v) {
+		for (auto i = 0; i < 2; ++i)
+			startPos[i] = pos[i] + 0.05*e.eigenvectors[v][i];
+		int dir = (e.eigenvaluesRe[v] > 0) ? 1 : -1;
+		auto buffer = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+		addVertice(pos, vertices, TypeCP::Line);
+		buffer->add(static_cast<std::uint32_t>(vertices.size() - 1));
+		integrateSeparatrice(vr, buffer, vertices, startPos, dir);
+		for (auto i = 0; i < 2; ++i)
+			startPos[i] = pos[i] - 0.05*e.eigenvectors[v][i];
+		buffer = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+		addVertice(pos, vertices, TypeCP::Line);
+		buffer->add(static_cast<std::uint32_t>(vertices.size() - 1));
+		integrateSeparatrice(vr, buffer, vertices, startPos, dir);
+	}
+	
+	
+
+}
+
+void Topology::integrateSeparatrice(const Volume* vr, IndexBufferRAM* buffer, std::vector<BasicMesh::Vertex>& vertices, const vec2& pos, const int dir) {
+	addVertice(pos, vertices, TypeCP::Line);
+	buffer->add(static_cast<std::uint32_t>(vertices.size() - 1));
+	vec2 current = pos;
+	double stepsize = 0.05;
+	for (int i = 0; i < 200; i++) {
+		vec2 previous = current;
+		current = Integrator::RK4(vr, current, stepsize, dir);
+		double newDist = Integrator::vecLength(current - previous);
+		//draw
+		addVertice(current, vertices, TypeCP::Line);
+		buffer->add(static_cast<std::uint32_t>(vertices.size() - 1));
+		if ((current[0] < 0 || current[0] > dims[0] - 1 || current[1] < 0 || current[1] > dims[1] - 1))
+			return;
+		if (newDist / stepsize < 0.01)
+			return;
+	}
 }
 
 
