@@ -52,11 +52,12 @@ public:
         AttractingFocus = 3,
         RepellingFocus = 4,
         Center = 5,
-		Line = 6
+		Line = 6,
+		Switch = 7
     };
 
     // Colors according to the TypeCP enum.
-    static const vec4 ColorsCP[7];
+    static const vec4 ColorsCP[8];
 
     // Construction / Deconstruction
   public:
@@ -79,6 +80,8 @@ public:
 	Topology::TypeCP identify(const mat2& jacobian);
 	void computeSeparatrices(const vec2& pos, const mat2& jacobian, const Volume* vr, std::shared_ptr<BasicMesh> mesh, std::vector<BasicMesh::Vertex>& vertices);
 	void integrateSeparatrice(const Volume* vr, IndexBufferRAM* buffer, std::vector<BasicMesh::Vertex>& vertices, const vec2& pos, const int dir);
+	void findBoundarySwitchPoints(const Volume* vol, IndexBufferRAM* pointsBuffer, std::vector<BasicMesh::Vertex>& vertices, std::shared_ptr<BasicMesh> mesh);
+	int sgn(const double x);
 	// Ports
   public:
     // Input data
@@ -87,6 +90,7 @@ public:
     // Output mesh
     MeshOutport outMesh;
 	IntProperty numOfSteps;
+	BoolProperty doBoundarySwitch;
   private:
 	uvec3 dims;
 };

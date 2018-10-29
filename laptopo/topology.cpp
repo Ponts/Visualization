@@ -36,7 +36,7 @@ y = cos(y)
 namespace inviwo
 {
 
-const vec4 Topology::ColorsCP[7] =
+const vec4 Topology::ColorsCP[8] =
     {
         vec4(1, 1, 0, 1),  // Saddle
         vec4(0, 0, 1, 1),  // AttractingNode
@@ -44,7 +44,8 @@ const vec4 Topology::ColorsCP[7] =
         vec4(0.5, 0, 1, 1),// AttractingFocus
         vec4(1, 0.5, 0, 1),// RepellingFocus
         vec4(0, 1, 0, 1),   // Center
-		vec4(1,1,1,1)		// Line
+		vec4(1,1,1,1),		// Line
+		vec4(0.8,0.8,0.8,1) // Boundary switch point
 
 };
 
@@ -65,6 +66,7 @@ const ProcessorInfo Topology::getProcessorInfo() const
 Topology::Topology()
 	: Processor(), outMesh("meshOut"), inData("inData")
 	, numOfSteps("numofsteps", "Nr of steps", 5, 0, 100)
+	, doBoundarySwitch("boundaryswitch", "Boundary Switch Points", false)
 // TODO: Initialize additional properties
 // propertyName("propertyIdentifier", "Display Name of the Propery",
 // default value (optional), minimum value (optional), maximum value (optional), increment (optional));
@@ -78,6 +80,7 @@ Topology::Topology()
     // TODO: Register additional properties
     // addProperty(propertyName);
 	addProperty(numOfSteps);
+	addProperty(doBoundarySwitch);
 }
 
 void Topology::process()
@@ -109,7 +112,6 @@ void Topology::process()
     // Looping through all values in the vector field.
 	std::vector<vec2> critPoints;
 	std::vector<TypeCP> types;
-	LogProcessorInfo("dims: " << dims[0] << " " << dims[1]);
 	for (auto y = 0; y < dims[1] - 1; ++y) {
 		for (auto x = 0; x < dims[0] - 1; ++x) {
 			if (changeOfSignTest(vol.get(), x, y, 1.)) {
@@ -128,7 +130,9 @@ void Topology::process()
 		}
 		
 	}
-	LogProcessorInfo(critPoints.size());
+	if (doBoundarySwitch) {
+		findBoundarySwitchPoints(vol.get(), indexBufferPoints, vertices, mesh);
+	}
     mesh->addVertices(vertices);
     outMesh.setData(mesh);
 }
@@ -236,6 +240,59 @@ void Topology::integrateSeparatrice(const Volume* vr, IndexBufferRAM* buffer, st
 		if (newDist / stepsize < 0.01)
 			return;
 	}
+}
+
+void Topology::findBoundarySwitchPoints(const Volume* vol, IndexBufferRAM* pointsBuffer, std::vector<BasicMesh::Vertex>& vertices, std::shared_ptr<BasicMesh> mesh) {
+	// bottom line
+	auto vr = vol->getRepresentation<VolumeRAM>();
+	int startYs[2] = { 0, dims.y - 1 };
+	double offset[2] = { 0.01, -0.01 };
+	for (int y = 0; y < 2; ++y) {
+		int sign = sgn(vr->getAsDVec2(size3_t(0, startYs[y], 0)).y);
+		int previousSign = sign;
+		for (int x = 1; x < dims.x; ++x) {
+			sign = sgn(vr->getAsDVec2(size3_t(x, startYs[y], 0)).y);
+			if (sign != previousSign) {
+				double prev = (vr->getAsDVec2(size3_t(x - 1, startYs[y], 0))).y;
+				double next = (vr->getAsDVec2(size3_t(x, startYs[y], 0))).y;
+				vec2 coord = vec2(x - 1 - (prev / (next - prev)), startYs[y] + offset[y]);
+				addVertice(coord, vertices, TypeCP::Switch);
+				pointsBuffer->add(static_cast<std::uint32_t>(vertices.size() - 1));
+				auto lineBuffer = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+				integrateSeparatrice(vol, lineBuffer, vertices, coord, 1);
+				lineBuffer = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+				integrateSeparatrice(vol, lineBuffer, vertices, coord, -1);
+			}
+			previousSign = sign;
+		}
+	}
+	
+	int startXs[2] = { 0, dims.x - 1 };
+	for (int x = 0; x < 2; ++x) {
+		int sign = sgn(vr->getAsDVec2(size3_t(startXs[x], 0, 0)).x);
+		int previousSign = sign;
+		for (int y = 1; y < dims.y; ++y) {
+			sign = sgn(vr->getAsDVec2(size3_t(startXs[x], y, 0)).x);
+			if (sign != previousSign) {
+				double prev = (vr->getAsDVec2(size3_t(startXs[x], y-1, 0))).x;
+				double next = (vr->getAsDVec2(size3_t(startXs[x], y, 0))).x;
+				vec2 coord = vec2(startXs[x] + offset[x], y - 1 - (prev / (next - prev)));
+				addVertice(coord, vertices, TypeCP::Switch);
+				pointsBuffer->add(static_cast<std::uint32_t>(vertices.size() - 1));
+				auto lineBuffer = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+				integrateSeparatrice(vol, lineBuffer, vertices, coord, 1);
+				lineBuffer = mesh->addIndexBuffer(DrawType::Lines, ConnectivityType::Strip);
+				integrateSeparatrice(vol, lineBuffer, vertices, coord, -1);
+			}
+			previousSign = sign;
+		}
+	}
+	
+}
+
+int Topology::sgn(const double x) {
+	if (x >= 0) return 1;
+	return -1;
 }
 
 
